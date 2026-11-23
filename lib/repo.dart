@@ -21,7 +21,14 @@ class Repo {
   DocumentReference<Map<String, dynamic>> get _userDoc => db.collection('users').doc(uid);
   DocumentReference<Map<String, dynamic>> _family(String fid) => db.collection('families').doc(fid);
 
-  Stream<String?> familyId() => _userDoc.snapshots().map((s) => s.data()?['familyId'] as String?);
+  /// Familie des Nutzers. Nur vom Server bestätigte Stände zählen: Sonst meldet der lokale
+  /// Zwischenspeicher die Familie schon, bevor der Server die Mitgliedschaft kennt, und die
+  /// folgenden Abfragen scheitern an den Zugriffsregeln (permission-denied).
+  Stream<String?> familyId() => _userDoc
+      .snapshots(includeMetadataChanges: true)
+      .where((s) => !s.metadata.hasPendingWrites)
+      .map((s) => s.data()?['familyId'] as String?)
+      .distinct();
 
   Stream<Family?> family(String fid) =>
       _family(fid).snapshots().map((s) => s.exists ? Family.fromMap(s.id, s.data()!) : null);

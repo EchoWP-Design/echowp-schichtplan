@@ -22,10 +22,33 @@ class _HomeScreenState extends State<HomeScreen> {
   late Stream<List<Member>> _members = widget.repo.members(widget.familyId);
   late Stream<List<ShiftType>> _types = widget.repo.shiftTypes(widget.familyId);
 
+  int _autoRetries = 0;
+  bool _retryScheduled = false;
+
+  void _resubscribe() {
+    setState(() {
+      _members = widget.repo.members(widget.familyId);
+      _types = widget.repo.shiftTypes(widget.familyId);
+    });
+  }
+
+  /// Nach einem Fehler (z. B. Netz weg oder Mitgliedschaft noch nicht beim Server)
+  /// bis zu dreimal selbst neu verbinden, danach nur noch per Knopf.
+  void _scheduleAutoRetry() {
+    if (_retryScheduled || _autoRetries >= 3) return;
+    _retryScheduled = true;
+    _autoRetries++;
+    Future<void>.delayed(Duration(seconds: 2 * _autoRetries), () {
+      _retryScheduled = false;
+      if (mounted) _resubscribe();
+    });
+  }
+
   @override
   void didUpdateWidget(HomeScreen old) {
     super.didUpdateWidget(old);
     if (old.familyId != widget.familyId || old.repo.uid != widget.repo.uid) {
+      _autoRetries = 0;
       _members = widget.repo.members(widget.familyId);
       _types = widget.repo.shiftTypes(widget.familyId);
     }
@@ -41,14 +64,27 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, typeSnap) {
             final error = memberSnap.error ?? typeSnap.error;
             if (error != null) {
+              _scheduleAutoRetry();
               return Scaffold(
                 appBar: AppBar(title: const Text('EchoWP Schichtplan')),
-                body: Padding(
+                body: ListView(
                   padding: const EdgeInsets.all(24),
-                  child: Text('Die Daten konnten nicht geladen werden.\n\n$error'),
+                  children: [
+                    Text('Die Daten konnten nicht geladen werden.\n\n$error'),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: () {
+                        _autoRetries = 0;
+                        _resubscribe();
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Erneut versuchen'),
+                    ),
+                  ],
                 ),
               );
             }
+            _autoRetries = 0;
             if (!memberSnap.hasData || !typeSnap.hasData) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
