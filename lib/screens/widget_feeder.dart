@@ -69,7 +69,7 @@ class WidgetFeederState extends State<WidgetFeeder> with WidgetsBindingObserver 
     if (_exportSub != null && dateKey(from) == _exportStart) return;
     _exportStart = dateKey(from);
     _exportSub?.cancel();
-    _exportSub = widget.repo.entries(widget.familyId, dateKey(from), dateKey(to)).listen((list) {
+    _exportSub = widget.repo.entriesConfirmed(widget.familyId, dateKey(from), dateKey(to)).listen((list) {
       _exportEntries = list;
       _scheduleExport();
     }, onError: (_) {});
@@ -89,7 +89,15 @@ class WidgetFeederState extends State<WidgetFeeder> with WidgetsBindingObserver 
     var entries = _exportEntries;
     if (entries == null) {
       final (from, to) = exportRange(DateTime.now());
-      entries = await widget.repo.entries(widget.familyId, dateKey(from), dateKey(to)).first;
+      try {
+        entries = await widget.repo
+            .entriesConfirmed(widget.familyId, dateKey(from), dateKey(to))
+            .first
+            .timeout(const Duration(seconds: 30));
+      } on TimeoutException {
+        _export.lastError.value = 'Keine Verbindung zum Schichtplan-Server. Abgleich später erneut versuchen.';
+        return;
+      }
     }
     await _export.sync(uid: widget.repo.uid, members: widget.members, types: widget.types, entries: entries);
   }

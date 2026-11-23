@@ -66,6 +66,8 @@ void main() {
       expect(p.description, contains('Frühdienst (F), 06:00–14:15'));
       expect(markerOf(p.description), entryId('jan', day, 1));
       expect(markerOf('Zahnarzt'), isNull);
+      // Google verpackt Beschreibungen manchmal in HTML
+      expect(markerOf('<p>Früh<br>$exportMarker${entryId('jan', day, 2)}</p>'), entryId('jan', day, 2));
       expect(markerOf(null), isNull);
     });
 
@@ -136,5 +138,21 @@ void main() {
     expect(find.text('Google Kalender'), findsOneWidget);
     expect(find.text('Einrichten'), findsOneWidget);
     expect(find.text('Jetzt abgleichen'), findsNothing);
+  });
+
+  test('Anzahl je Person und verständliche Zusammenfassung', () {
+    final planned = plannedEvents(entries: entries, typesById: _types, membersByUid: _members);
+    final counts = countPerPerson(planned, entries, _members.values.toList());
+    expect(counts, {'Jan': 2, 'Person 2': 1});
+    final r = ExportResult(
+      created: 3,
+      deleted: 1,
+      unchanged: 0,
+      at: DateTime(2026, 11, 23, 21, 5),
+      perPerson: counts,
+      skipped: 2,
+    );
+    expect(r.label, 'Abgeglichen um 21:05: 3 Schichten im Kalender (Jan 2, Person 2 1), 3 neu, 1 entfernt. '
+        '2 Einträge ohne Schichtart übersprungen.');
   });
 }

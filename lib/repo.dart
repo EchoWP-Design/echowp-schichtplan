@@ -53,6 +53,17 @@ class Repo {
       .snapshots()
       .map((q) => q.docs.map((d) => Entry.fromMap(d.id, d.data())).toList());
 
+  /// Wie [entries], aber nur vom Server bestätigte, vollständige Stände. Für den Kalender-Export:
+  /// Der lokale Zwischenspeicher enthält oft nur die zuletzt angesehenen Tage; ein Abgleich
+  /// damit würde alle anderen Termine im Kalender löschen.
+  Stream<List<Entry>> entriesConfirmed(String fid, String from, String to) => _family(fid)
+      .collection('entries')
+      .where('date', isGreaterThanOrEqualTo: from)
+      .where('date', isLessThanOrEqualTo: to)
+      .snapshots(includeMetadataChanges: true)
+      .where((q) => !q.metadata.isFromCache && !q.metadata.hasPendingWrites)
+      .map((q) => q.docs.map((d) => Entry.fromMap(d.id, d.data())).toList());
+
   Future<void> createFamily({required String familyName, required String memberName}) async {
     final famRef = db.collection('families').doc();
     var code = newInviteCode();

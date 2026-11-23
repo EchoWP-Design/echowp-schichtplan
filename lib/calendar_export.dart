@@ -71,9 +71,12 @@ String? markerOf(String? description) {
   if (description == null) return null;
   final i = description.lastIndexOf(exportMarker);
   if (i < 0) return null;
-  final key = description.substring(i + exportMarker.length).trim().split(RegExp(r'\s')).first;
-  return key.isEmpty ? null : key;
+  // Nur die Kennung selbst (uid_JJJJMMTT_platz): Google kann die Beschreibung in HTML verpacken.
+  final m = _keyRe.firstMatch(description.substring(i + exportMarker.length));
+  return m?.group(0);
 }
+
+final _keyRe = RegExp(r'[A-Za-z0-9]+_\d{8}_\d');
 
 /// Gewünschte Termine aus den Einträgen. [onlyOwner] = nur diese Person, sonst ganze Familie.
 List<PlannedEvent> plannedEvents({
@@ -165,16 +168,46 @@ class ExportConfig {
 /// Ergebnis eines Abgleichs für die Anzeige.
 @immutable
 class ExportResult {
-  const ExportResult({required this.created, required this.deleted, required this.unchanged, required this.at});
+  const ExportResult({
+    required this.created,
+    required this.deleted,
+    required this.unchanged,
+    required this.at,
+    this.perPerson = const {},
+    this.skipped = 0,
+  });
 
   final int created, deleted, unchanged;
   final DateTime at;
 
+  /// Übertragene Schichten je Person (Name → Anzahl).
+  final Map<String, int> perPerson;
+
+  /// Einträge ohne bekannte Schichtart (nicht übertragbar).
+  final int skipped;
+
   String get label {
     final t = '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
-    if (created == 0 && deleted == 0) return 'Abgeglichen um $t: alles aktuell ($unchanged Termine).';
-    return 'Abgeglichen um $t: $created neu oder geändert, $deleted entfernt, $unchanged unverändert.';
+    final total = perPerson.values.fold(0, (a, b) => a + b);
+    final people = perPerson.entries.map((e) => '${e.key} ${e.value}').join(', ');
+    final changes = created == 0 && deleted == 0 ? 'keine Änderung nötig' : '$created neu, $deleted entfernt';
+    final skip = skipped > 0 ? ' $skipped Einträge ohne Schichtart übersprungen.' : '';
+    return 'Abgeglichen um $t: $total Schichten im Kalender${people.isEmpty ? '' : ' ($people)'}, $changes.$skip';
   }
+}
+
+/// Anzahl je Person, in der Reihenfolge der Mitglieder.
+Map<String, int> countPerPerson(List<PlannedEvent> planned, Iterable<Entry> entries, List<Member> members) {
+  final ownerByKey = {for (final e in entries) e.id: e.owner};
+  final counts = <String, int>{};
+  for (final p in planned) {
+    final owner = ownerByKey[p.key];
+    if (owner != null) counts[owner] = (counts[owner] ?? 0) + 1;
+  }
+  return {
+    for (final m in members)
+      if (counts.containsKey(m.uid)) m.name: counts[m.uid]!,
+  };
 }
 
 class CalendarExport {
@@ -284,47 +317,72 @@ class CalendarExport {
     try {
       final (from, to) = exportRange(now ?? DateTime.now());
       final fromKey = dateKey(from), toKey = dateKey(to);
+      final typesById = {for (final t in types) t.id: t};
+      final inRange = entries
+          .where((e) => e.date.compareTo(fromKey) >= 0 && e.date.compareTo(toKey) <= 0)
+          .where((e) => c.wholeFamily || e.owner == uid)
+          .toList();
       final planned = plannedEvents(
-        entries: entries.where((e) => e.date.compareTo(fromKey) >= 0 && e.date.compareTo(toKey) <= 0),
-        typesById: {for (final t in types) t.id: t},
+        entries: inRange,
+        typesById: typesById,
         membersByUid: {for (final m in members) m.uid: m},
         onlyOwner: c.wholeFamily ? null : uid,
       );
+      final skipped = inRange.where((e) => !typesById.containsKey(e.shiftTypeId)).length;
       // Ein Tag Puffer, damit Nachtschichten am Rand mitgezählt werden
-      final existing = await _existing(c.calendarId, from, to.add(const Duration(days: 2)));
-      final plan = planSync(planned, existing);
+      final listTo = to.add(const Duration(days: 2));
+      var plan = planSync(planned, await _existing(c.calendarId, from, listTo));
+      final unchanged = plan.unchanged;
       // Erst anlegen, dann löschen: So fehlt nie eine Schicht, falls das Löschen scheitert.
       var created = 0, deleted = 0;
-      for (final p in plan.create) {
-        try {
-          await _cal
-              .createEvent(
-                calendarId: c.calendarId,
-                title: p.title,
-                startDate: p.start,
-                endDate: p.end,
-                isAllDay: p.allDay,
-                description: p.description,
-              )
-              .timeout(const Duration(seconds: 20));
-          created++;
-        } catch (e) {
-          errors.add('Anlegen „${p.title}“ am ${dateKey(p.start)}: ${_describe(e)}');
+      for (var round = 0; round < 2; round++) {
+        for (final p in plan.create) {
+          if (await _create(c.calendarId, p, errors)) created++;
         }
+        for (final id in plan.delete) {
+          if (await _delete(id, errors)) deleted++;
+        }
+        // Kontrolle: Kalender neu lesen und prüfen, ob jetzt alles da ist
+        plan = planSync(planned, await _existing(c.calendarId, from, listTo));
+        if (plan.create.isEmpty) break;
       }
-      for (final id in plan.delete) {
-        if (await _delete(id, errors)) deleted++;
+      if (plan.create.isNotEmpty) {
+        final sample = plan.create.take(3).map((p) => '${p.title} am ${dateKey(p.start)}').join(', ');
+        errors.insert(0, '${plan.create.length} Schichten fehlen nach dem Abgleich im Kalender, z. B. $sample');
       }
-      lastResult.value = ExportResult(created: created, deleted: deleted, unchanged: plan.unchanged, at: DateTime.now());
-      lastError.value = errors.isEmpty
-          ? null
-          : '${errors.length} von ${plan.create.length + plan.delete.length} Änderungen gescheitert. '
-              'Erste Meldung: ${errors.first}';
+      lastResult.value = ExportResult(
+        created: created,
+        deleted: deleted,
+        unchanged: unchanged,
+        at: DateTime.now(),
+        perPerson: countPerPerson(planned, inRange, members),
+        skipped: skipped,
+      );
+      lastError.value = errors.isEmpty ? null : '${errors.length} Probleme. ${errors.first}';
     } catch (e) {
       lastError.value = 'Kalender-Abgleich fehlgeschlagen: ${_describe(e)}';
     } finally {
       _running = null;
       done.complete();
+    }
+  }
+
+  Future<bool> _create(String calendarId, PlannedEvent p, List<String> errors) async {
+    try {
+      await _cal
+          .createEvent(
+            calendarId: calendarId,
+            title: p.title,
+            startDate: p.start,
+            endDate: p.end,
+            isAllDay: p.allDay,
+            description: p.description,
+          )
+          .timeout(const Duration(seconds: 20));
+      return true;
+    } catch (e) {
+      errors.add('Anlegen „${p.title}“ am ${dateKey(p.start)}: ${_describe(e)}');
+      return false;
     }
   }
 
