@@ -29,6 +29,8 @@ jobs:
       - name: Plattform-Dateien erzeugen
         run: flutter create --platforms=android --org de.echowp --project-name schichtplan .
       - run: flutter pub get
+      - name: App-Symbol erzeugen
+        run: dart run flutter_launcher_icons
       - name: Firebase-Zugang aus GitHub-Secret
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}

@@ -1,7 +1,7 @@
 name: schichtplan
 description: EchoWP Schichtplan – gemeinsamer Schichtkalender für die Familie (Android).
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: '>=3.12.0 <4.0.0'
@@ -19,6 +19,17 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
+
+# App-Symbol nach EchoWP Corporate Design (Quellen: assets/icon/quellen/)
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0A0A0A"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/icon_monochrome.png"
+  min_sdk_android: 24

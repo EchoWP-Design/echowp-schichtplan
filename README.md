@@ -2,7 +2,7 @@
 
 # EchoWP Schichtplan
 
-**Aktuelle Version: 0.1.0**
+**Aktuelle Version: 0.1.1**
 
 Gemeinsamer Schichtkalender für die Familie (Android). Jede Person trägt ihre Schichten selbst ein, alle Handys sehen sofort denselben Kalender.
 
@@ -40,4 +40,5 @@ Neueste Version: *Releases → `EchoWP-Schichtplan.apk`*. Play Protect: „Trotz
 
 ## Versionsverlauf
 
+- **0.1.1** – App-Symbol nach EchoWP Corporate Design (Elefant mit Kalenderblatt).
 - **0.1.0** – Grundgerüst: Anmeldung, Familie, Schicht-Datenbank, Monatskalender.
