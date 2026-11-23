@@ -2,7 +2,7 @@
 
 # EchoWP Schichtplan
 
-**Aktuelle Version: 1.0.0**
+**Aktuelle Version: 1.0.1**
 
 Gemeinsamer Schichtkalender für die Familie (Android). Jede Person trägt ihre Schichten selbst ein, alle Handys sehen sofort denselben Kalender.
 
@@ -47,6 +47,7 @@ Neueste Version: *Releases → `EchoWP-Schichtplan.apk`*. Play Protect: „Trotz
 
 ## Versionsverlauf
 
+- **1.0.1** – „Lizenzen und Hinweise“ unter *Familie* (Datenschutz in Kurzform, Open-Source-Lizenzen); Code unter MIT-Lizenz.
 - **1.0.0** – Erste freigegebene Version: gemeinsamer Kalender, Schicht-Datenbank, Widgets, Google-Kalender-Export, Update-Knopf.
 - **0.3.1** – Kalender-Export: Termin-Titel ist das Kürzel der Schicht, der Langname steht in der Beschreibung.
 - **0.3.0** – Export in den Google Kalender (bzw. jeden Kalender auf dem Handy) ohne Doppelungen.
@@ -54,3 +55,7 @@ Neueste Version: *Releases → `EchoWP-Schichtplan.apk`*. Play Protect: „Trotz
 - **0.1.2** – Fehler „permission-denied“ direkt nach dem Anlegen oder Beitreten behoben; Fehlerseite mit „Erneut versuchen“.
 - **0.1.1** – App-Symbol nach EchoWP Corporate Design (Elefant mit Kalenderblatt).
 - **0.1.0** – Grundgerüst: Anmeldung, Familie, Schicht-Datenbank, Monatskalender.
+
+## Lizenz
+
+Quellcode: [MIT-Lizenz](LICENSE). Die Lizenzen der verwendeten Pakete zeigt die App unter *Familie → Lizenzen und Hinweise*.

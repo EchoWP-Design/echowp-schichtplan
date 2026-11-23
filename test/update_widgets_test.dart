@@ -9,6 +9,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:schichtplan/home_widgets.dart';
 import 'package:schichtplan/logic.dart';
 import 'package:schichtplan/models.dart';
+import 'package:schichtplan/screens/legal_screen.dart';
 import 'package:schichtplan/screens/update_card.dart';
 import 'package:schichtplan/updater.dart';
 
@@ -165,5 +166,14 @@ void main() {
       expect(find.text('November 2026'), findsOneWidget);
       expect(find.text('Maximili…'), findsOneWidget);
     });
+  });
+
+  testWidgets('Hinweise zeigen Datenschutz und öffnen die Lizenzliste', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: LegalScreen()));
+    expect(find.text('Wo die Daten liegen'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Open-Source-Lizenzen anzeigen'), 200);
+    await tester.tap(find.text('Open-Source-Lizenzen anzeigen'));
+    await tester.pumpAndSettle();
+    expect(find.text('EchoWP Schichtplan'), findsWidgets);
   });
 }

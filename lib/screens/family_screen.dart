@@ -6,6 +6,7 @@ import '../logic.dart';
 import '../models.dart';
 import '../repo.dart';
 import 'export_card.dart';
+import 'legal_screen.dart';
 import 'update_card.dart';
 
 /// Familie: Einladungscode, Mitglieder, eigener Name und Farbe.
@@ -160,6 +161,13 @@ class _FamilyScreenState extends State<FamilyScreen> {
               ExportCard(onSyncNow: widget.onExportSync),
               const SizedBox(height: 8),
               const UpdateCard(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.gavel_outlined),
+                title: const Text('Lizenzen und Hinweise'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegalScreen())),
+              ),
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: () => FirebaseAuth.instance.signOut(),
