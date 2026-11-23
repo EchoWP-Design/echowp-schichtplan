@@ -1,0 +1,39 @@
+name: Signierschlüssel erzeugen (einmalig)
+
+# Nur von Hand starten: Actions → „Signierschlüssel erzeugen (einmalig)“ → Run workflow.
+# Ergebnis: Artefakt „Signierschluessel“ (1 Tag aufbewahrt) mit zwei Textdateien für die GitHub-Secrets.
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Schlüssel erzeugen
+        run: |
+          PW=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 32)
+          echo "::add-mask::$PW"
+          mkdir -p out
+          keytool -genkeypair -keystore out/schichtplan.jks -storetype PKCS12 -alias echowp \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -storepass "$PW" -keypass "$PW" -dname "CN=EchoWP Schichtplan, O=EchoWP, C=DE"
+          base64 -w0 out/schichtplan.jks > out/SCHICHTPLAN_KEYSTORE_B64.txt
+          printf '%s' "$PW" > out/SCHICHTPLAN_KEYSTORE_PASSWORD.txt
+          {
+            echo "### Fingerabdrücke für Firebase"
+            echo '```'
+            keytool -list -v -keystore out/schichtplan.jks -storepass "$PW" -alias echowp | grep -E "SHA1:|SHA256:"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          rm out/schichtplan.jks
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Signierschluessel
+          path: out/*.txt
+          retention-days: 1

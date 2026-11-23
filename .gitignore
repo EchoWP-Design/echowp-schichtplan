@@ -1,0 +1,22 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Von CI erzeugt (flutter create)
+android/
+ios/
+web/
+linux/
+macos/
+windows/
+
+# Zugangsdaten – nie einchecken
+lib/firebase_options.dart
+google-services.json
+keystore/
+*.jks
+*.keystore

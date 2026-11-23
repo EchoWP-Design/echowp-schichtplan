@@ -1,0 +1,79 @@
+import 'package:flutter/material.dart';
+
+import '../models.dart';
+import '../repo.dart';
+import 'calendar_screen.dart';
+import 'family_screen.dart';
+import 'shifts_screen.dart';
+
+/// Hauptbildschirm mit drei Reitern: Kalender, Meine Schichten, Familie.
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, required this.repo, required this.familyId});
+
+  final Repo repo;
+  final String familyId;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _tab = 0;
+  late Stream<List<Member>> _members = widget.repo.members(widget.familyId);
+  late Stream<List<ShiftType>> _types = widget.repo.shiftTypes(widget.familyId);
+
+  @override
+  void didUpdateWidget(HomeScreen old) {
+    super.didUpdateWidget(old);
+    if (old.familyId != widget.familyId || old.repo.uid != widget.repo.uid) {
+      _members = widget.repo.members(widget.familyId);
+      _types = widget.repo.shiftTypes(widget.familyId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<Member>>(
+      stream: _members,
+      builder: (context, memberSnap) {
+        return StreamBuilder<List<ShiftType>>(
+          stream: _types,
+          builder: (context, typeSnap) {
+            final error = memberSnap.error ?? typeSnap.error;
+            if (error != null) {
+              return Scaffold(
+                appBar: AppBar(title: const Text('EchoWP Schichtplan')),
+                body: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('Die Daten konnten nicht geladen werden.\n\n$error'),
+                ),
+              );
+            }
+            if (!memberSnap.hasData || !typeSnap.hasData) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            }
+            final members = memberSnap.data!;
+            final types = typeSnap.data!;
+            final pages = [
+              CalendarScreen(repo: widget.repo, familyId: widget.familyId, members: members, types: types),
+              ShiftsScreen(repo: widget.repo, familyId: widget.familyId, types: types),
+              FamilyScreen(repo: widget.repo, familyId: widget.familyId, members: members),
+            ];
+            return Scaffold(
+              body: IndexedStack(index: _tab, children: pages),
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: _tab,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                destinations: const [
+                  NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Kalender'),
+                  NavigationDestination(icon: Icon(Icons.work_history), label: 'Meine Schichten'),
+                  NavigationDestination(icon: Icon(Icons.family_restroom), label: 'Familie'),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}

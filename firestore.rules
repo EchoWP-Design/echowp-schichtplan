@@ -1,0 +1,72 @@
+rules_version = '2';
+
+// Zugriffsregeln für EchoWP Schichtplan.
+// Einspielen: Firebase-Konsole → Firestore Database → Regeln → Inhalt ersetzen → Veröffentlichen.
+//
+// Grundsatz: Nur Familienmitglieder sehen die Daten ihrer Familie.
+// Jede Person ändert nur ihre eigenen Schichtarten und Einträge.
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(fid) {
+      return signedIn() && exists(/databases/$(db)/documents/families/$(fid)/members/$(request.auth.uid));
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /invites/{code} {
+      // Einzelabruf mit bekanntem Code erlaubt, Auflisten nicht.
+      allow get: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['familyId'])
+        && getAfter(/databases/$(db)/documents/families/$(request.resource.data.familyId)).data.createdBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /families/{fid} {
+      allow get: if isMember(fid);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isMember(fid)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.inviteCode == resource.data.inviteCode;
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isMember(fid);
+        // Anlegen nur für sich selbst: als Gründer der Familie oder mit gültigem Einladungscode.
+        allow create: if signedIn() && request.auth.uid == uid && (
+          getAfter(/databases/$(db)/documents/families/$(fid)).data.createdBy == uid
+          || get(/databases/$(db)/documents/invites/$(request.resource.data.inviteCode)).data.familyId == fid
+        );
+        allow update: if signedIn() && request.auth.uid == uid;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      match /shiftTypes/{id} {
+        allow read: if isMember(fid);
+        allow create: if isMember(fid) && request.resource.data.owner == request.auth.uid;
+        allow update: if isMember(fid)
+          && resource.data.owner == request.auth.uid
+          && request.resource.data.owner == request.auth.uid;
+        allow delete: if isMember(fid) && resource.data.owner == request.auth.uid;
+      }
+
+      match /entries/{id} {
+        allow read: if isMember(fid);
+        allow create: if isMember(fid)
+          && request.resource.data.owner == request.auth.uid
+          && id.matches(request.auth.uid + '_[0-9]{8}_[12]');
+        allow update: if isMember(fid)
+          && resource.data.owner == request.auth.uid
+          && request.resource.data.owner == request.auth.uid;
+        allow delete: if isMember(fid) && resource.data.owner == request.auth.uid;
+      }
+    }
+  }
+}
