@@ -43,7 +43,7 @@ void main() {
     test('nur eigene Schichten, Zeiten und Nachtschicht über Mitternacht', () {
       final mine = plannedEvents(entries: entries, typesById: _types, membersByUid: _members, onlyOwner: 'jan');
       expect(mine.length, 2);
-      expect(mine[0].title, 'Frühdienst');
+      expect(mine[0].title, 'F');
       expect(mine[0].start, DateTime(2026, 12, 9, 6));
       expect(mine[0].end, DateTime(2026, 12, 9, 14, 15));
       expect(mine[0].allDay, isFalse);
@@ -58,7 +58,7 @@ void main() {
 
     test('ganze Familie: Name im Titel', () {
       final all = plannedEvents(entries: entries, typesById: _types, membersByUid: _members);
-      expect(all.map((p) => p.title), ['Jan: Frühdienst', 'Jan: Urlaub', 'Person 2: Nacht']);
+      expect(all.map((p) => p.title), ['Jan: F', 'Jan: U', 'Person 2: N']);
     });
 
     test('Kennung steht in der Beschreibung und wird wieder erkannt', () {
@@ -67,6 +67,12 @@ void main() {
       expect(markerOf(p.description), entryId('jan', day, 1));
       expect(markerOf('Zahnarzt'), isNull);
       expect(markerOf(null), isNull);
+    });
+
+    test('ohne Kürzel steht der Name im Titel', () {
+      final noCode = {'f': _early.copyWith(code: '')};
+      final list = plannedEvents(entries: [_e('jan', day, 'f')], typesById: noCode, membersByUid: _members);
+      expect(list.single.title, 'Jan: Frühdienst');
     });
 
     test('unbekannte Schichtart wird übersprungen', () {

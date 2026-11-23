@@ -94,7 +94,9 @@ List<PlannedEvent> plannedEvents({
     }
     if (type == null) continue;
     final who = membersByUid[e.owner]?.name ?? '';
-    final title = onlyOwner == null && who.isNotEmpty ? '$who: ${type.name}' : type.name;
+    // Titel = Kürzel (Jans Wunsch), Langname steht in der Beschreibung
+    final short = type.code.trim().isEmpty ? type.name : type.code.trim();
+    final title = onlyOwner == null && who.isNotEmpty ? '$who: $short' : short;
     final DateTime start, end;
     if (type.allDay) {
       start = DateTime(day.year, day.month, day.day);
