@@ -7,7 +7,7 @@ build/
 pubspec.lock
 
 # Von CI erzeugt (flutter create)
-android/
+/android/
 ios/
 web/
 linux/
