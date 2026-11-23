@@ -30,6 +30,10 @@ def manifest(t: str) -> str:
         t = t.replace("<application", '<application\n        android:allowBackup="false"', 1)
     if "android.permission.INTERNET" not in t:
         t = t.replace("<application", '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+    # Kalender-Export in einen Kalender auf dem Handy
+    for perm in ("READ_CALENDAR", "WRITE_CALENDAR"):
+        if f"android.permission.{perm}" not in t:
+            t = t.replace("<application", f'<uses-permission android:name="android.permission.{perm}"/>\n    <application', 1)
     # Update-Knopf öffnet den Download im Browser (Android 11+ braucht dafür eine Abfrage-Freigabe)
     if 'android:scheme="https"' not in t:
         queries = (

@@ -5,15 +5,25 @@ import 'package:flutter/services.dart';
 import '../logic.dart';
 import '../models.dart';
 import '../repo.dart';
+import 'export_card.dart';
 import 'update_card.dart';
 
 /// Familie: Einladungscode, Mitglieder, eigener Name und Farbe.
 class FamilyScreen extends StatefulWidget {
-  const FamilyScreen({super.key, required this.repo, required this.familyId, required this.members});
+  const FamilyScreen({
+    super.key,
+    required this.repo,
+    required this.familyId,
+    required this.members,
+    required this.onExportSync,
+  });
 
   final Repo repo;
   final String familyId;
   final List<Member> members;
+
+  /// Kalender-Export sofort abgleichen.
+  final Future<void> Function() onExportSync;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
@@ -147,6 +157,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       : null,
                 ),
               const SizedBox(height: 16),
+              ExportCard(onSyncNow: widget.onExportSync),
+              const SizedBox(height: 8),
               const UpdateCard(),
               const SizedBox(height: 24),
               OutlinedButton.icon(

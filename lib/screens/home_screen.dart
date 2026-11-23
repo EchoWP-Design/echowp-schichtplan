@@ -47,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _updateChecked = false;
+  final _feeder = GlobalKey<WidgetFeederState>();
 
   @override
   void initState() {
@@ -108,9 +109,15 @@ class _HomeScreenState extends State<HomeScreen> {
             final pages = [
               CalendarScreen(repo: widget.repo, familyId: widget.familyId, members: members, types: types),
               ShiftsScreen(repo: widget.repo, familyId: widget.familyId, types: types),
-              FamilyScreen(repo: widget.repo, familyId: widget.familyId, members: members),
+              FamilyScreen(
+                repo: widget.repo,
+                familyId: widget.familyId,
+                members: members,
+                onExportSync: () => _feeder.currentState?.syncExportNow() ?? Future.value(),
+              ),
             ];
             return WidgetFeeder(
+              key: _feeder,
               repo: widget.repo,
               familyId: widget.familyId,
               members: members,
