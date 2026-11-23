@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../repo.dart';
+import '../updater.dart';
 import 'calendar_screen.dart';
 import 'family_screen.dart';
 import 'shifts_screen.dart';
@@ -114,6 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 familyId: widget.familyId,
                 members: members,
                 onExportSync: () => _feeder.currentState?.syncExportNow() ?? Future.value(),
+                onExportReport: () =>
+                    _feeder.currentState?.exportReport(appVersionLabel) ?? Future.value('Noch nicht bereit.'),
               ),
             ];
             return WidgetFeeder(

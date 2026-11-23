@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../calendar_export.dart';
 
 /// Karte „Google Kalender“: Export einrichten, Stand anzeigen, ausschalten.
 class ExportCard extends StatefulWidget {
-  const ExportCard({super.key, required this.onSyncNow});
+  const ExportCard({super.key, required this.onSyncNow, this.onReport});
 
   /// Startet einen Abgleich mit den aktuellen Daten (kommt vom Hauptbildschirm).
   final Future<void> Function() onSyncNow;
+
+  /// Erstellt den Prüfbericht (Text).
+  final Future<String> Function()? onReport;
 
   @override
   State<ExportCard> createState() => _ExportCardState();
@@ -34,69 +38,70 @@ class _ExportCardState extends State<ExportCard> {
   }
 
   Future<void> _setup() => _run(() async {
-        if (!await _export.ensurePermission()) {
-          _snack('Ohne Kalender-Berechtigung geht der Export nicht.');
-          return;
-        }
-        final calendars = await _export.writableCalendars();
-        if (!mounted) return;
-        if (calendars.isEmpty) {
-          _snack('Kein beschreibbarer Kalender gefunden. Ist ein Google-Konto auf dem Handy eingerichtet?');
-          return;
-        }
-        final current = _export.config.value;
-        var wholeFamily = current?.wholeFamily ?? false;
-        final chosen = await showDialog<String>(
-          context: context,
-          builder: (context) => StatefulBuilder(
-            builder: (context, setLocal) => AlertDialog(
-              title: const Text('In welchen Kalender?'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Schichten der ganzen Familie'),
-                      subtitle: Text(wholeFamily ? 'Mit Namen im Titel' : 'Aus: nur meine eigenen Schichten'),
-                      value: wholeFamily,
-                      onChanged: (v) => setLocal(() => wholeFamily = v),
-                    ),
-                    const Divider(),
-                    for (final c in calendars)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.circle,
-                          color: _hexColor(c.colorHex) ?? Theme.of(context).colorScheme.outline,
-                        ),
-                        title: Text(c.name),
-                        subtitle: Text(c.accountName ?? ''),
-                        selected: c.id == current?.calendarId,
-                        onTap: () => Navigator.pop(context, c.id),
-                      ),
-                  ],
+    if (!await _export.ensurePermission()) {
+      _snack('Ohne Kalender-Berechtigung geht der Export nicht.');
+      return;
+    }
+    final calendars = await _export.writableCalendars();
+    if (!mounted) return;
+    if (calendars.isEmpty) {
+      _snack('Kein beschreibbarer Kalender gefunden. Ist ein Google-Konto auf dem Handy eingerichtet?');
+      return;
+    }
+    final current = _export.config.value;
+    var wholeFamily = current?.wholeFamily ?? false;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('In welchen Kalender?'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Schichten der ganzen Familie'),
+                  subtitle: Text(wholeFamily ? 'Mit Namen im Titel' : 'Aus: nur meine eigenen Schichten'),
+                  value: wholeFamily,
+                  onChanged: (v) => setLocal(() => wholeFamily = v),
                 ),
-              ),
-              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen'))],
+                const Divider(),
+                for (final c in calendars)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.circle, color: _hexColor(c.colorHex) ?? Theme.of(context).colorScheme.outline),
+                    title: Text(c.name),
+                    subtitle: Text(c.accountName ?? ''),
+                    selected: c.id == current?.calendarId,
+                    onTap: () => Navigator.pop(context, c.id),
+                  ),
+              ],
             ),
           ),
-        );
-        if (chosen == null) return;
-        final cal = calendars.firstWhere((c) => c.id == chosen);
-        // Wechsel des Kalenders: alte Termine im bisherigen Kalender entfernen
-        if (current != null && current.calendarId != chosen) {
-          await _export.removeAll(current.calendarId);
-        }
-        await _export.save(ExportConfig(
-          calendarId: cal.id,
-          calendarName: [cal.name, if ((cal.accountName ?? '').isNotEmpty && cal.accountName != cal.name) cal.accountName]
-              .join(' · '),
-          wholeFamily: wholeFamily,
-        ));
-        await widget.onSyncNow();
-      });
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen'))],
+        ),
+      ),
+    );
+    if (chosen == null) return;
+    final cal = calendars.firstWhere((c) => c.id == chosen);
+    // Wechsel des Kalenders: alte Termine im bisherigen Kalender entfernen
+    if (current != null && current.calendarId != chosen) {
+      await _export.removeAll(current.calendarId);
+    }
+    await _export.save(
+      ExportConfig(
+        calendarId: cal.id,
+        calendarName: [
+          cal.name,
+          if ((cal.accountName ?? '').isNotEmpty && cal.accountName != cal.name) cal.accountName,
+        ].join(' · '),
+        wholeFamily: wholeFamily,
+      ),
+    );
+    await widget.onSyncNow();
+  });
 
   Future<void> _disable() async {
     final c = _export.config.value;
@@ -123,6 +128,38 @@ class _ExportCardState extends State<ExportCard> {
     });
   }
 
+  Future<void> _showReport() async {
+    final onReport = widget.onReport;
+    if (onReport == null) return;
+    setState(() => _busy = true);
+    String text;
+    try {
+      text = await onReport();
+    } catch (e) {
+      text = 'Prüfbericht fehlgeschlagen: $e';
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Prüfbericht'),
+        content: SingleChildScrollView(child: SelectableText(text, style: const TextStyle(fontSize: 12))),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (context.mounted) Navigator.pop(context);
+              _snack('Prüfbericht kopiert. Bitte in den Chat einfügen.');
+            },
+            child: const Text('Kopieren'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
+        ],
+      ),
+    );
+  }
+
   static Color? _hexColor(String? hex) {
     if (hex == null) return null;
     final v = int.tryParse(hex.replaceFirst('#', ''), radix: 16);
@@ -145,7 +182,7 @@ class _ExportCardState extends State<ExportCard> {
               Text(
                 config == null
                     ? 'Aus. Die Schichten können zusätzlich in einen Kalender auf diesem Handy '
-                        '(z. B. dein Google-Kalender) übertragen werden, ohne Doppelungen.'
+                          '(z. B. dein Google-Kalender) übertragen werden, ohne Doppelungen.'
                     : '${config.wholeFamily ? 'Schichten der Familie' : 'Meine Schichten'} → ${config.calendarName}',
               ),
               if (config != null) ...[
@@ -186,6 +223,13 @@ class _ExportCardState extends State<ExportCard> {
                       label: const Text('Jetzt abgleichen'),
                     ),
                     TextButton(onPressed: _busy ? null : _disable, child: const Text('Ausschalten')),
+                  ],
+                  if (widget.onReport != null) ...[
+                    TextButton.icon(
+                      onPressed: _busy ? null : _showReport,
+                      icon: const Icon(Icons.fact_check_outlined),
+                      label: const Text('Prüfbericht'),
+                    ),
                   ],
                 ],
               ),

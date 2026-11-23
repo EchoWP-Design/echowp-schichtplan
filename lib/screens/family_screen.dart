@@ -17,6 +17,7 @@ class FamilyScreen extends StatefulWidget {
     required this.familyId,
     required this.members,
     required this.onExportSync,
+    required this.onExportReport,
   });
 
   final Repo repo;
@@ -25,6 +26,9 @@ class FamilyScreen extends StatefulWidget {
 
   /// Kalender-Export sofort abgleichen.
   final Future<void> Function() onExportSync;
+
+  /// Prüfbericht des Kalender-Exports.
+  final Future<String> Function() onExportReport;
 
   @override
   State<FamilyScreen> createState() => _FamilyScreenState();
@@ -158,7 +162,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
                       : null,
                 ),
               const SizedBox(height: 16),
-              ExportCard(onSyncNow: widget.onExportSync),
+              ExportCard(onSyncNow: widget.onExportSync, onReport: widget.onExportReport),
               const SizedBox(height: 8),
               const UpdateCard(),
               ListTile(

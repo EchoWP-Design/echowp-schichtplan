@@ -102,6 +102,24 @@ class WidgetFeederState extends State<WidgetFeeder> with WidgetsBindingObserver 
     await _export.sync(uid: widget.repo.uid, members: widget.members, types: widget.types, entries: entries);
   }
 
+  /// Prüfbericht des Kalender-Exports mit den aktuellen Daten.
+  Future<String> exportReport(String appVersion) async {
+    final (from, to) = exportRange(DateTime.now());
+    final entries =
+        _exportEntries ??
+        await widget.repo
+            .entriesConfirmed(widget.familyId, dateKey(from), dateKey(to))
+            .first
+            .timeout(const Duration(seconds: 30));
+    return _export.report(
+      uid: widget.repo.uid,
+      members: widget.members,
+      types: widget.types,
+      entries: entries,
+      appVersion: appVersion,
+    );
+  }
+
   void _subscribe() {
     final (from, to) = widgetRange(DateTime.now());
     if (_sub != null && dateKey(from) == _rangeStart) return;

@@ -455,6 +455,108 @@ class CalendarExport {
     return '$e';
   }
 
+  /// Prüfbericht als Text: was dieses Handy plant und was es in den Kalendern vorfindet.
+  Future<String> report({
+    required String uid,
+    required List<Member> members,
+    required List<ShiftType> types,
+    required List<Entry> entries,
+    required String appVersion,
+  }) async {
+    await load();
+    final c = config.value;
+    final out = StringBuffer()
+      ..writeln('Prüfbericht EchoWP Schichtplan $appVersion')
+      ..writeln('Zeit: ${DateTime.now().toString().substring(0, 16)}')
+      ..writeln('Gerät: $_device');
+    final me = members.where((m) => m.uid == uid).firstOrNull?.name ?? '?';
+    out.writeln('Angemeldet als: $me');
+    if (c == null) {
+      out.writeln('Export: aus');
+    } else {
+      out
+        ..writeln('Export: ${c.wholeFamily ? 'ganze Familie' : 'nur meine'}')
+        ..writeln('Kalender: ${c.calendarName} (id ${c.calendarId})');
+    }
+    final nameOf = {for (final m in members) m.uid: m.name};
+    String person(String key) => nameOf[key.substring(0, key.lastIndexOf('_', key.lastIndexOf('_') - 1))] ?? '?';
+    final (from, to) = exportRange(DateTime.now());
+    final fromKey = dateKey(from), toKey = dateKey(to);
+    final typesById = {for (final t in types) t.id: t};
+    final inRange = entries.where((e) => e.date.compareTo(fromKey) >= 0 && e.date.compareTo(toKey) <= 0).toList();
+    out.writeln('Zeitraum: $fromKey bis $toKey');
+    final perOwner = <String, int>{};
+    for (final e in inRange) {
+      final n = nameOf[e.owner] ?? '?';
+      perOwner[n] = (perOwner[n] ?? 0) + 1;
+    }
+    out.writeln(
+      'Schichten im Schichtplan: ${inRange.length} (${perOwner.entries.map((e) => '${e.key} ${e.value}').join(', ')})',
+    );
+    final noType = inRange.where((e) => !typesById.containsKey(e.shiftTypeId)).length;
+    if (noType > 0) out.writeln('davon ohne bekannte Schichtart: $noType');
+    if (c != null) {
+      final planned = plannedEvents(
+        entries: inRange.where((e) => c.wholeFamily || e.owner == uid),
+        typesById: typesById,
+        membersByUid: {for (final m in members) m.uid: m},
+        onlyOwner: c.wholeFamily ? null : uid,
+      );
+      out.writeln('Soll dieses Handy übertragen: ${planned.length}');
+    }
+    out.writeln();
+    out.writeln('Schichtplan-Termine in den Kalendern dieses Handys:');
+    try {
+      final cals = await _cal.listCalendars();
+      for (final cal in cals) {
+        final found = await _existing(cal.id, from, to.add(const Duration(days: 2)));
+        if (found.isEmpty && cal.id != c?.calendarId) continue;
+        final byDevice = <String, int>{};
+        final byPerson = <String, int>{};
+        final keys = <String, int>{};
+        for (final e in found) {
+          final d = e.device.isEmpty ? 'ohne Kennung' : (e.device == _device ? 'dieses Handy' : e.device);
+          byDevice[d] = (byDevice[d] ?? 0) + 1;
+          final n = person(e.key);
+          byPerson[n] = (byPerson[n] ?? 0) + 1;
+          keys[e.key] = (keys[e.key] ?? 0) + 1;
+        }
+        final doubles = keys.values.where((v) => v > 1).length;
+        final missing = c != null && cal.id == c.calendarId
+            ? inRange
+                  .where(
+                    (e) =>
+                        (c.wholeFamily || e.owner == uid) &&
+                        typesById.containsKey(e.shiftTypeId) &&
+                        !keys.containsKey(e.id),
+                  )
+                  .toList()
+            : const <Entry>[];
+        out
+          ..writeln(
+            '• ${cal.name} [${cal.accountName ?? '-'}] id ${cal.id}${cal.id == c?.calendarId ? ' ← gewählt' : ''}${cal.readOnly ? ' (nur lesen)' : ''}',
+          )
+          ..writeln(
+            '  Termine: ${found.length}; je Person: ${byPerson.entries.map((e) => '${e.key} ${e.value}').join(', ')}',
+          )
+          ..writeln('  je Handy: ${byDevice.entries.map((e) => '${e.key} ${e.value}').join(', ')}')
+          ..writeln('  doppelt: $doubles');
+        if (missing.isNotEmpty) {
+          out.writeln(
+            '  fehlen: ${missing.length}, z. B. ${missing.take(4).map((e) => '${nameOf[e.owner] ?? '?'} ${e.date}').join(', ')}',
+          );
+        }
+      }
+    } catch (e) {
+      out.writeln('Kalender nicht lesbar: ${_describe(e)}');
+    }
+    final r = lastResult.value;
+    if (r != null) out.writeln('\nLetzter Abgleich: ${r.label}');
+    final err = lastError.value;
+    if (err != null) out.writeln('Fehler: $err');
+    return out.toString();
+  }
+
   /// Entfernt die von diesem Handy (oder einer alten Version) angelegten Termine im Zeitraum
   /// (beim Ausschalten). Termine anderer Handys bleiben stehen.
   Future<int> removeAll(String calendarId, {DateTime? now}) async {
