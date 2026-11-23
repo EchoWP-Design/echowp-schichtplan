@@ -24,4 +24,5 @@ Familien-Schichtkalender von 0 bis Version 0.3.0: Grundgerüst, App-Symbol, Star
 - Widgets und Export aktualisieren sich nur, wenn die App läuft oder geöffnet wird.
 
 ## Zustand
+Version 1.0.0 von Jan freigegeben (23.11.2026).
 Branch `main`, Build über GitHub Actions, Release-Tag `v<version>-build-<lauf>`.
