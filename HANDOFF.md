@@ -12,10 +12,9 @@ Familien-Schichtkalender von null bis Version 1.0.3 gebaut, zuletzt den Google-K
 - 1.0.3 Hauptfehler behoben: Export lief mit Firestore-Zwischenspeicher (nur angesehener Monat) und löschte alle anderen Termine. Jetzt `Repo.entriesConfirmed` (nur Serverstände), Kontrolle nach dem Abgleich, Anzahl je Person – 354b227
 
 ## Offen / nächster Schritt
-1. Jans Rückmeldung zu 1.0.3 abwarten: Sind nach „Jetzt abgleichen“ alle Schichten aller Personen im Google Kalender? Er schickt ggf. Screenshot der Karte *Familie → Google Kalender* (Zeile mit Anzahl je Person oder roter Fehler).
-2. Falls weiter Termine fehlen: Fehlermeldung der Karte auswerten (Löschen scheiterte unter 1.0.1 aus ungeklärtem Grund, siehe unten).
-3. Widgets am Handy prüfen lassen (Aussehen, Größe) – bisher keine Rückmeldung.
-4. Idee: Widgets und Export ohne geöffnete App aktualisieren (WorkManager + Firestore im Hintergrund).
+1. Kalender-Export läuft seit 1.0.4/1.0.5 (Prüfberichte aller drei Handys sauber). Letzter Fehler war Lukas' Handy: Google-Synchronisierung hing, Aus-/Einschalten half (Jan, 23.11. 22:10).
+2. Offen: Jan sah Michaelas Termine zeitweise doppelt – vermutlich Reste alter Versionen in einem zweiten Kalender; Rückmeldung abwarten.
+3. Widgets am Handy prüfen lassen; Idee: Hintergrund-Aktualisierung (WorkManager).
 
 ## Entscheidungen
 - Export in einen vorhandenen Kalender auf dem Handy (`device_calendar_plus`), keine Google-API/OAuth. Duplikatschutz über `EchoWP-Schichtplan-ID: <entryId>` in der Beschreibung; Kennung wird per Regex gelesen (Google kann HTML einpacken).
@@ -31,5 +30,5 @@ Familien-Schichtkalender von null bis Version 1.0.3 gebaut, zuletzt den Google-K
 - Lokal: Flutter 3.50.1 nach `/home/claude/tools/flutter` laden; für `flutter analyze` einen Platzhalter `lib/firebase_options.dart` anlegen (gitignored).
 
 ## Zustand
-- Branch `main`, letzter Commit 354b227, Arbeitsverzeichnis sauber
-- Build 45257634496 grün, Release v1.0.3-build-14; lokal 42 Tests grün
+- Branch `main`, Release v1.0.5-build-16 (Prüfbericht), lokal 45 Tests grün
+- Geteilter Google-Kalender „Familie“ gehört Jan, Familiengruppe hat Bearbeitungsrechte; alle Handys exportieren „nur meine“ dorthin
