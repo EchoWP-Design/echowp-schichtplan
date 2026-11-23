@@ -261,6 +261,7 @@ class CalendarExport {
   }
 
   /// Gleicht den gewählten Kalender mit den Einträgen ab. Läuft nie doppelt gleichzeitig.
+  /// Jeder Termin wird einzeln geschrieben: Scheitert einer, laufen die übrigen trotzdem weiter.
   Future<void> sync({
     required String uid,
     required List<Member> members,
@@ -269,12 +270,17 @@ class CalendarExport {
     DateTime? now,
   }) async {
     while (_running != null) {
-      await _running;
+      try {
+        await _running!.timeout(const Duration(minutes: 2));
+      } on TimeoutException {
+        _running = null; // hängender Lauf darf spätere nicht blockieren
+      }
     }
     final c = config.value;
     if (c == null) return;
     final done = Completer<void>();
     _running = done.future;
+    final errors = <String>[];
     try {
       final (from, to) = exportRange(now ?? DateTime.now());
       final fromKey = dateKey(from), toKey = dateKey(to);
@@ -287,43 +293,76 @@ class CalendarExport {
       // Ein Tag Puffer, damit Nachtschichten am Rand mitgezählt werden
       final existing = await _existing(c.calendarId, from, to.add(const Duration(days: 2)));
       final plan = planSync(planned, existing);
-      for (final id in plan.delete) {
-        await _cal.deleteEvent(instanceId: id);
-      }
+      // Erst anlegen, dann löschen: So fehlt nie eine Schicht, falls das Löschen scheitert.
+      var created = 0, deleted = 0;
       for (final p in plan.create) {
-        await _cal.createEvent(
-          calendarId: c.calendarId,
-          title: p.title,
-          startDate: p.start,
-          endDate: p.end,
-          isAllDay: p.allDay,
-          description: p.description,
-        );
+        try {
+          await _cal
+              .createEvent(
+                calendarId: c.calendarId,
+                title: p.title,
+                startDate: p.start,
+                endDate: p.end,
+                isAllDay: p.allDay,
+                description: p.description,
+              )
+              .timeout(const Duration(seconds: 20));
+          created++;
+        } catch (e) {
+          errors.add('Anlegen „${p.title}“ am ${dateKey(p.start)}: ${_describe(e)}');
+        }
       }
-      lastResult.value = ExportResult(
-        created: plan.create.length,
-        deleted: plan.delete.length,
-        unchanged: plan.unchanged,
-        at: DateTime.now(),
-      );
-      lastError.value = null;
+      for (final id in plan.delete) {
+        if (await _delete(id, errors)) deleted++;
+      }
+      lastResult.value = ExportResult(created: created, deleted: deleted, unchanged: plan.unchanged, at: DateTime.now());
+      lastError.value = errors.isEmpty
+          ? null
+          : '${errors.length} von ${plan.create.length + plan.delete.length} Änderungen gescheitert. '
+              'Erste Meldung: ${errors.first}';
     } catch (e) {
-      lastError.value = e is DeviceCalendarException && e.errorCode == DeviceCalendarError.permissionDenied
-          ? 'Keine Berechtigung für den Kalender. Bitte unter Einstellungen → Apps → Schichtplan erlauben.'
-          : 'Kalender-Abgleich fehlgeschlagen: $e';
+      lastError.value = 'Kalender-Abgleich fehlgeschlagen: ${_describe(e)}';
     } finally {
       _running = null;
       done.complete();
     }
   }
 
+  /// Löscht einen Termin. „Nicht gefunden“ zählt als erledigt (schon gelöscht).
+  Future<bool> _delete(String id, List<String> errors) async {
+    try {
+      await _cal.deleteEvent(instanceId: id).timeout(const Duration(seconds: 20));
+      return true;
+    } on DeviceCalendarException catch (e) {
+      if (e.errorCode == DeviceCalendarError.notFound) return true;
+      errors.add('Löschen von Termin $id: ${_describe(e)}');
+    } catch (e) {
+      errors.add('Löschen von Termin $id: ${_describe(e)}');
+    }
+    return false;
+  }
+
+  static String _describe(Object e) {
+    if (e is DeviceCalendarException) {
+      if (e.errorCode == DeviceCalendarError.permissionDenied) {
+        return 'keine Berechtigung für den Kalender (Einstellungen → Apps → Schichtplan → Berechtigungen)';
+      }
+      return '${e.errorCode.name}: ${e.message}';
+    }
+    if (e is TimeoutException) return 'keine Antwort vom Kalender (Zeitüberschreitung)';
+    return '$e';
+  }
+
   /// Entfernt alle von der App angelegten Termine im Zeitraum (beim Ausschalten).
   Future<int> removeAll(String calendarId, {DateTime? now}) async {
     final (from, to) = exportRange(now ?? DateTime.now());
     final existing = await _existing(calendarId, from, to.add(const Duration(days: 2)));
+    final errors = <String>[];
+    var n = 0;
     for (final e in existing) {
-      await _cal.deleteEvent(instanceId: e.id);
+      if (await _delete(e.id, errors)) n++;
     }
-    return existing.length;
+    if (errors.isNotEmpty) throw StateError('${errors.length} Termine ließen sich nicht löschen. ${errors.first}');
+    return n;
   }
 }
