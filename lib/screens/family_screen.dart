@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../logic.dart';
 import '../models.dart';
 import '../repo.dart';
+import 'update_card.dart';
 
 /// Familie: Einladungscode, Mitglieder, eigener Name und Farbe.
 class FamilyScreen extends StatefulWidget {
@@ -106,8 +107,9 @@ class _FamilyScreenState extends State<FamilyScreen> {
                               onPressed: () async {
                                 await Clipboard.setData(ClipboardData(text: family.inviteCode));
                                 if (context.mounted) {
-                                  ScaffoldMessenger.of(context)
-                                      .showSnackBar(const SnackBar(content: Text('Code kopiert')));
+                                  ScaffoldMessenger.of(
+                                    context,
+                                  ).showSnackBar(const SnackBar(content: Text('Code kopiert')));
                                 }
                               },
                             ),
@@ -144,6 +146,8 @@ class _FamilyScreenState extends State<FamilyScreen> {
                         )
                       : null,
                 ),
+              const SizedBox(height: 16),
+              const UpdateCard(),
               const SizedBox(height: 24),
               OutlinedButton.icon(
                 onPressed: () => FirebaseAuth.instance.signOut(),

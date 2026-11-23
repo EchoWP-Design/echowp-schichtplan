@@ -5,6 +5,8 @@ import '../repo.dart';
 import 'calendar_screen.dart';
 import 'family_screen.dart';
 import 'shifts_screen.dart';
+import 'update_card.dart';
+import 'widget_feeder.dart';
 
 /// Hauptbildschirm mit drei Reitern: Kalender, Meine Schichten, Familie.
 class HomeScreen extends StatefulWidget {
@@ -41,6 +43,19 @@ class _HomeScreenState extends State<HomeScreen> {
     Future<void>.delayed(Duration(seconds: 2 * _autoRetries), () {
       _retryScheduled = false;
       if (mounted) _resubscribe();
+    });
+  }
+
+  bool _updateChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Einmal pro Start leise nach einer neuen Version sehen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _updateChecked) return;
+      _updateChecked = true;
+      checkForUpdateQuietly(context);
     });
   }
 
@@ -95,16 +110,22 @@ class _HomeScreenState extends State<HomeScreen> {
               ShiftsScreen(repo: widget.repo, familyId: widget.familyId, types: types),
               FamilyScreen(repo: widget.repo, familyId: widget.familyId, members: members),
             ];
-            return Scaffold(
-              body: IndexedStack(index: _tab, children: pages),
-              bottomNavigationBar: NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (i) => setState(() => _tab = i),
-                destinations: const [
-                  NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Kalender'),
-                  NavigationDestination(icon: Icon(Icons.work_history), label: 'Meine Schichten'),
-                  NavigationDestination(icon: Icon(Icons.family_restroom), label: 'Familie'),
-                ],
+            return WidgetFeeder(
+              repo: widget.repo,
+              familyId: widget.familyId,
+              members: members,
+              types: types,
+              child: Scaffold(
+                body: IndexedStack(index: _tab, children: pages),
+                bottomNavigationBar: NavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: (i) => setState(() => _tab = i),
+                  destinations: const [
+                    NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Kalender'),
+                    NavigationDestination(icon: Icon(Icons.work_history), label: 'Meine Schichten'),
+                    NavigationDestination(icon: Icon(Icons.family_restroom), label: 'Familie'),
+                  ],
+                ),
               ),
             );
           },

@@ -2,6 +2,7 @@
 import os
 import pathlib
 import re
+import shutil
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -29,7 +30,58 @@ def manifest(t: str) -> str:
         t = t.replace("<application", '<application\n        android:allowBackup="false"', 1)
     if "android.permission.INTERNET" not in t:
         t = t.replace("<application", '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+    # Update-Knopf öffnet den Download im Browser (Android 11+ braucht dafür eine Abfrage-Freigabe)
+    if 'android:scheme="https"' not in t:
+        queries = (
+            "    <queries>\n"
+            "        <intent>\n"
+            '            <action android:name="android.intent.action.VIEW"/>\n'
+            '            <data android:scheme="https"/>\n'
+            "        </intent>\n"
+            "    </queries>\n"
+        )
+        if "</queries>" in t:
+            intent = "".join(queries.splitlines(keepends=True)[1:-1])
+            t = t.replace("    </queries>", intent + "    </queries>", 1)
+        else:
+            t = t.replace("</manifest>", queries + "</manifest>", 1)
+    # Startbildschirm-Widgets (Kotlin und Layouts aus tool/android/)
+    if ".HeuteWidget" not in t:
+        receivers = "".join(
+            f'''        <receiver android:name=".{cls}" android:label="{label}" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/{info}"/>
+        </receiver>
+'''
+            for cls, label, info in WIDGETS
+        )
+        t = t.replace("    </application>", receivers + "    </application>", 1)
     return t
+
+
+WIDGETS = [
+    ("HeuteWidget", "Schichten heute", "widget_heute_info"),
+    ("MonatWidget", "Schichten Monatsübersicht", "widget_monat_info"),
+]
+
+
+def copy_widget_files():
+    src = root / "tool" / "android"
+    main = root / "android" / "app" / "src" / "main"
+    kotlin_dir = main / "kotlin" / "de" / "echowp" / "schichtplan"
+    if not (kotlin_dir / "MainActivity.kt").exists():
+        print(f"::error::MainActivity.kt nicht gefunden in {kotlin_dir.relative_to(root)}")
+        sys.exit(1)
+    for f in sorted((src / "kotlin").glob("*.kt")):
+        shutil.copy(f, kotlin_dir / f.name)
+        print(f"kopiert: {f.name}")
+    for f in sorted((src / "res").rglob("*.xml")):
+        target = main / "res" / f.relative_to(src / "res")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(f, target)
+        print(f"kopiert: res/{f.relative_to(src / 'res')}")
 
 
 def gradle_kts(t: str) -> str:
@@ -54,6 +106,7 @@ def gradle_kts(t: str) -> str:
     return t
 
 
+copy_widget_files()
 patch(root / "android/app/src/main/AndroidManifest.xml", manifest)
 patch(root / "android/app/build.gradle.kts", gradle_kts)
 print("Signatur: Release-Schlüssel" if SIGNED else "Signatur: Test-Schlüssel (Secrets fehlen)")
