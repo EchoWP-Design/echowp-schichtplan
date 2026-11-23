@@ -7,24 +7,32 @@ import 'package:schichtplan/screens/export_card.dart';
 
 const _early = ShiftType(id: 'f', owner: 'jan', name: 'Frühdienst', code: 'F', start: 360, end: 855, color: 0xFFE8590C);
 const _night = ShiftType(id: 'n', owner: 'p2', name: 'Nacht', code: 'N', start: 1290, end: 405, color: 0xFF5F3DC4);
-const _vac = ShiftType(id: 'u', owner: 'jan', name: 'Urlaub', code: 'U', start: 0, end: 0, color: 0xFF2F9E44, allDay: true);
+const _vac = ShiftType(
+  id: 'u',
+  owner: 'jan',
+  name: 'Urlaub',
+  code: 'U',
+  start: 0,
+  end: 0,
+  color: 0xFF2F9E44,
+  allDay: true,
+);
 const _types = {'f': _early, 'n': _night, 'u': _vac};
 const _members = {
   'jan': Member(uid: 'jan', name: 'Jan', color: 0xFF1C7ED6),
   'p2': Member(uid: 'p2', name: 'Person 2', color: 0xFFE64980),
 };
 
-Entry _e(String owner, DateTime day, String type, [int slot = 1]) => Entry(
-      id: entryId(owner, day, slot),
-      owner: owner,
-      date: dateKey(day),
-      slot: slot,
-      shiftTypeId: type,
-    );
+Entry _e(String owner, DateTime day, String type, [int slot = 1]) =>
+    Entry(id: entryId(owner, day, slot), owner: owner, date: dateKey(day), slot: slot, shiftTypeId: type);
 
-ExistingEvent _existing(String id, PlannedEvent p, {String? title, DateTime? start}) => ExistingEvent(
+const _me = 'mmmmmmmm';
+
+ExistingEvent _existing(String id, PlannedEvent p, {String? title, DateTime? start, String device = _me}) =>
+    ExistingEvent(
       id: id,
       key: p.key,
+      device: device,
       title: title ?? p.title,
       start: start ?? p.start,
       end: p.end,
@@ -33,11 +41,7 @@ ExistingEvent _existing(String id, PlannedEvent p, {String? title, DateTime? sta
 
 void main() {
   final day = DateTime(2026, 12, 9);
-  final entries = [
-    _e('jan', day, 'f'),
-    _e('jan', DateTime(2026, 12, 10), 'u'),
-    _e('p2', day, 'n'),
-  ];
+  final entries = [_e('jan', day, 'f'), _e('jan', DateTime(2026, 12, 10), 'u'), _e('p2', day, 'n')];
 
   group('Termine aus Einträgen', () {
     test('nur eigene Schichten, Zeiten und Nachtschicht über Mitternacht', () {
@@ -63,8 +67,11 @@ void main() {
 
     test('Kennung steht in der Beschreibung und wird wieder erkannt', () {
       final p = plannedEvents(entries: entries, typesById: _types, membersByUid: _members).first;
-      expect(p.description, contains('Frühdienst (F), 06:00–14:15'));
-      expect(markerOf(p.description), entryId('jan', day, 1));
+      final d = p.descriptionFor('ab12cd34');
+      expect(d, contains('Frühdienst (F), 06:00–14:15'));
+      expect(markerOf(d), entryId('jan', day, 1));
+      expect(deviceOf(d), 'ab12cd34');
+      expect(deviceOf('Früh\n\n$exportMarker${entryId('jan', day, 1)}'), ''); // alte Version
       expect(markerOf('Zahnarzt'), isNull);
       // Google verpackt Beschreibungen manchmal in HTML
       expect(markerOf('<p>Früh<br>$exportMarker${entryId('jan', day, 2)}</p>'), entryId('jan', day, 2));
@@ -87,13 +94,13 @@ void main() {
     final planned = plannedEvents(entries: entries, typesById: _types, membersByUid: _members);
 
     test('leerer Kalender: alles anlegen', () {
-      final plan = planSync(planned, const []);
+      final plan = planSync(planned, const [], device: _me);
       expect(plan.create.length, 3);
       expect(plan.delete, isEmpty);
     });
 
     test('alles aktuell: nichts tun', () {
-      final plan = planSync(planned, [for (var i = 0; i < planned.length; i++) _existing('e$i', planned[i])]);
+      final plan = planSync(planned, [for (var i = 0; i < planned.length; i++) _existing('e$i', planned[i])], device: _me);
       expect(plan.isEmpty, isTrue);
       expect(plan.unchanged, 3);
     });
@@ -106,22 +113,61 @@ void main() {
         ExistingEvent(
           id: 'z1',
           key: 'jan_20261201_1', // Schicht gibt es nicht mehr
+          device: _me,
           title: 'Frühdienst',
           start: DateTime(2026, 12, 1, 6),
           end: DateTime(2026, 12, 1, 14, 15),
           allDay: false,
         ),
       ];
-      final plan = planSync(planned, existing);
+      final plan = planSync(planned, existing, device: _me);
       expect(plan.unchanged, 1);
       expect(plan.create.map((p) => p.key), [planned[1].key, planned[2].key]);
       expect(plan.delete, unorderedEquals(['a2', 'b1', 'z1']));
     });
 
+    test('Termine anderer Handys werden nie gelöscht, alte ohne Kennung schon', () {
+      final existing = [
+        _existing('fremd1', planned[0], device: 'zzzzzzzz'),
+        _existing('fremd2', planned[0], device: 'zzzzzzzz', title: 'anders'),
+        ExistingEvent(
+          id: 'fremd3',
+          key: 'lukas_20261201_1', // plant dieses Handy gar nicht
+          device: 'aaaaaaaa',
+          title: 'SL',
+          start: DateTime(2026, 12, 1, 6),
+          end: DateTime(2026, 12, 1, 14),
+          allDay: false,
+        ),
+        _existing('alt1', planned[1], device: ''),
+      ];
+      final plan = planSync(planned, existing, device: _me);
+      expect(plan.delete, ['alt1']);
+      // Handy mit größerer Kennung deckt nichts ab: dieses Handy legt alle drei an
+      expect(plan.create.length, 3);
+    });
+
+    test('Zwei Handys im selben Kalender: nur das mit kleinerer Kennung legt an', () {
+      final other = [for (var i = 0; i < planned.length; i++) _existing('a$i', planned[i], device: 'aaaaaaaa')];
+      final mineToo = [for (var i = 0; i < planned.length; i++) _existing('m$i', planned[i])];
+      final plan = planSync(planned, [...other, ...mineToo], device: _me);
+      expect(plan.create, isEmpty);
+      expect(plan.delete, unorderedEquals(['m0', 'm1', 'm2'])); // eigene Doppel räumen
+      expect(plan.unchanged, 3);
+      // Das andere Handy sieht unsere Termine und behält trotzdem seine
+      final otherPlan = planSync(planned, [...other, ...mineToo], device: 'aaaaaaaa');
+      expect(otherPlan.isEmpty, isTrue);
+    });
+
+    test('neue Gerätekennung: 8 Zeichen a–z, 0–9', () {
+      final id = newDeviceId();
+      expect(id, matches(RegExp(r'^[a-z0-9]{8}$')));
+    });
+
     test('zweimaliger Abgleich erzeugt keine Doppelungen', () {
-      final first = planSync(planned, const []);
+      final first = planSync(planned, const [], device: _me);
       final created = [for (var i = 0; i < first.create.length; i++) _existing('n$i', first.create[i])];
-      expect(planSync(planned, created).isEmpty, isTrue);
+      expect(planSync(planned, created, device: _me).isEmpty, isTrue);
     });
   });
 
@@ -132,9 +178,11 @@ void main() {
   });
 
   testWidgets('Karte zeigt „Einrichten“, solange der Export aus ist', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: ExportCard(onSyncNow: () async {})),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: ExportCard(onSyncNow: () async {})),
+      ),
+    );
     expect(find.text('Google Kalender'), findsOneWidget);
     expect(find.text('Einrichten'), findsOneWidget);
     expect(find.text('Jetzt abgleichen'), findsNothing);
@@ -152,7 +200,10 @@ void main() {
       perPerson: counts,
       skipped: 2,
     );
-    expect(r.label, 'Abgeglichen um 21:05: 3 Schichten im Kalender (Jan 2, Person 2 1), 3 neu, 1 entfernt. '
-        '2 Einträge ohne Schichtart übersprungen.');
+    expect(
+      r.label,
+      'Abgeglichen um 21:05: 3 Schichten im Kalender (Jan 2, Person 2 1), 3 neu, 1 entfernt. '
+      '2 Einträge ohne Schichtart übersprungen.',
+    );
   });
 }

@@ -1,10 +1,12 @@
 // Export der Schichten in einen Kalender auf dem Handy (z. B. das Google-Konto).
 //
-// Duplikate sind ausgeschlossen: Jeder exportierte Termin trägt in der Beschreibung die feste
-// Kennung des Eintrags (`EchoWP-Schichtplan-ID: <entryId>`). Beim Abgleich gilt nur der
-// Schichtplan: fehlende Termine werden angelegt, geänderte neu geschrieben, überzählige
-// (auch doppelte) gelöscht. Termine ohne Kennung bleiben unangetastet.
+// Jeder exportierte Termin trägt in der Beschreibung die feste Kennung des Eintrags und des
+// Handys, das ihn angelegt hat (`EchoWP-Schichtplan-ID: <entryId> Gerät <geraet>`).
+// Jedes Handy ändert und löscht nur seine eigenen Termine. Schreiben mehrere Handys in denselben
+// (geteilten) Kalender, legt für eine Schicht nur das Handy mit der kleinsten Gerätekennung
+// einen Termin an, die anderen lassen sie aus. Termine ohne Kennung bleiben unangetastet.
 import 'dart:async';
+import 'dart:math';
 
 import 'package:device_calendar_plus/device_calendar_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -14,12 +16,11 @@ import 'logic.dart';
 import 'models.dart';
 
 const exportMarker = 'EchoWP-Schichtplan-ID: ';
+const deviceMarker = 'Gerät ';
 
 /// Zeitraum des Abgleichs: zwei Wochen zurück, vier Monate voraus.
-(DateTime, DateTime) exportRange(DateTime today) => (
-      DateTime(today.year, today.month, today.day - 14),
-      DateTime(today.year, today.month, today.day + 120),
-    );
+(DateTime, DateTime) exportRange(DateTime today) =>
+    (DateTime(today.year, today.month, today.day - 14), DateTime(today.year, today.month, today.day + 120));
 
 /// Ein Termin, wie er im Kalender stehen soll.
 @immutable
@@ -40,7 +41,7 @@ class PlannedEvent {
   final bool allDay;
   final String details;
 
-  String get description => '$details\n\n$exportMarker$key';
+  String descriptionFor(String device) => '$details\n\n$exportMarker$key $deviceMarker$device';
 }
 
 /// Ein vorhandener, von der App angelegter Termin.
@@ -49,6 +50,7 @@ class ExistingEvent {
   const ExistingEvent({
     required this.id,
     required this.key,
+    this.device = '',
     required this.title,
     required this.start,
     required this.end,
@@ -57,6 +59,9 @@ class ExistingEvent {
 
   final String id;
   final String key;
+
+  /// Gerätekennung des Handys, das den Termin angelegt hat ('' = Version vor 1.0.4).
+  final String device;
   final String title;
   final DateTime start;
   final DateTime end;
@@ -77,6 +82,22 @@ String? markerOf(String? description) {
 }
 
 final _keyRe = RegExp(r'[A-Za-z0-9]+_\d{8}_\d');
+final _deviceRe = RegExp(deviceMarker + r'([a-z0-9]{8})');
+
+/// Gerätekennung aus der Beschreibung, '' bei Terminen älterer Versionen.
+String deviceOf(String? description) {
+  if (description == null) return '';
+  final i = description.lastIndexOf(exportMarker);
+  if (i < 0) return '';
+  return _deviceRe.firstMatch(description.substring(i))?.group(1) ?? '';
+}
+
+/// Neue zufällige Gerätekennung (8 Zeichen a–z, 0–9).
+String newDeviceId([Random? random]) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  final r = random ?? Random.secure();
+  return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
+}
 
 /// Gewünschte Termine aus den Einträgen. [onlyOwner] = nur diese Person, sonst ganze Familie.
 List<PlannedEvent> plannedEvents({
@@ -129,28 +150,40 @@ class SyncPlan {
   bool get isEmpty => create.isEmpty && delete.isEmpty;
 }
 
-SyncPlan planSync(List<PlannedEvent> planned, List<ExistingEvent> existing) {
-  final byKey = <String, List<ExistingEvent>>{};
+/// Plan für dieses Handy ([device]). Fremde Termine (andere Gerätekennung) werden nie gelöscht.
+/// Termine älterer Versionen ohne Gerätekennung räumt jedes Handy weg: Sie stammen aus der
+/// fehlerhaften Zeit, in der sich Handys gegenseitig Termine gelöscht haben.
+SyncPlan planSync(List<PlannedEvent> planned, List<ExistingEvent> existing, {required String device}) {
+  final mine = <String, List<ExistingEvent>>{};
+  final othersByKey = <String, List<String>>{};
+  final delete = <String>[];
   for (final e in existing) {
-    byKey.putIfAbsent(e.key, () => []).add(e);
+    if (e.device == device) {
+      mine.putIfAbsent(e.key, () => []).add(e);
+    } else if (e.device.isEmpty) {
+      delete.add(e.id);
+    } else {
+      othersByKey.putIfAbsent(e.key, () => []).add(e.device);
+    }
   }
   final create = <PlannedEvent>[];
-  final delete = <String>[];
   var unchanged = 0;
   final plannedKeys = <String>{};
   for (final p in planned) {
     if (!plannedKeys.add(p.key)) continue;
-    final found = byKey[p.key] ?? const <ExistingEvent>[];
-    final keep = found.where((e) => e.matches(p)).firstOrNull;
-    if (keep != null) {
+    final found = mine[p.key] ?? const <ExistingEvent>[];
+    // Ein anderes Handy mit kleinerer Kennung hat diese Schicht schon im selben Kalender
+    final covered = (othersByKey[p.key] ?? const <String>[]).any((d) => d.compareTo(device) < 0);
+    final keep = covered ? null : found.where((e) => e.matches(p)).firstOrNull;
+    if (covered || keep != null) {
       unchanged++;
     } else {
       create.add(p);
     }
     delete.addAll(found.where((e) => !identical(e, keep)).map((e) => e.id));
   }
-  for (final e in existing) {
-    if (!plannedKeys.contains(e.key)) delete.add(e.id);
+  for (final entry in mine.entries) {
+    if (!plannedKeys.contains(entry.key)) delete.addAll(entry.value.map((e) => e.id));
   }
   return SyncPlan(create: create, delete: delete, unchanged: unchanged);
 }
@@ -216,6 +249,10 @@ class CalendarExport {
   static final instance = CalendarExport._();
 
   static const _kId = 'export_calendar_id', _kName = 'export_calendar_name', _kFamily = 'export_family';
+  static const _kDevice = 'export_device_id';
+
+  /// Kennung dieses Handys für die exportierten Termine (bleibt bis zur Neuinstallation gleich).
+  String _device = '';
 
   final config = ValueNotifier<ExportConfig?>(null);
   final lastResult = ValueNotifier<ExportResult?>(null);
@@ -230,6 +267,11 @@ class CalendarExport {
     _loaded = true;
     try {
       final p = await SharedPreferences.getInstance();
+      _device = p.getString(_kDevice) ?? '';
+      if (_device.isEmpty) {
+        _device = newDeviceId();
+        await p.setString(_kDevice, _device);
+      }
       final id = p.getString(_kId);
       if (id != null && id.isNotEmpty) {
         config.value = ExportConfig(
@@ -285,6 +327,7 @@ class CalendarExport {
           ExistingEvent(
             id: e.eventId,
             key: markerOf(e.description)!,
+            device: deviceOf(e.description),
             title: e.title,
             start: e.startDate,
             end: e.endDate,
@@ -309,8 +352,9 @@ class CalendarExport {
         _running = null; // hängender Lauf darf spätere nicht blockieren
       }
     }
+    await load();
     final c = config.value;
-    if (c == null) return;
+    if (c == null || _device.isEmpty) return;
     final done = Completer<void>();
     _running = done.future;
     final errors = <String>[];
@@ -331,7 +375,7 @@ class CalendarExport {
       final skipped = inRange.where((e) => !typesById.containsKey(e.shiftTypeId)).length;
       // Ein Tag Puffer, damit Nachtschichten am Rand mitgezählt werden
       final listTo = to.add(const Duration(days: 2));
-      var plan = planSync(planned, await _existing(c.calendarId, from, listTo));
+      var plan = planSync(planned, await _existing(c.calendarId, from, listTo), device: _device);
       final unchanged = plan.unchanged;
       // Erst anlegen, dann löschen: So fehlt nie eine Schicht, falls das Löschen scheitert.
       var created = 0, deleted = 0;
@@ -343,7 +387,7 @@ class CalendarExport {
           if (await _delete(id, errors)) deleted++;
         }
         // Kontrolle: Kalender neu lesen und prüfen, ob jetzt alles da ist
-        plan = planSync(planned, await _existing(c.calendarId, from, listTo));
+        plan = planSync(planned, await _existing(c.calendarId, from, listTo), device: _device);
         if (plan.create.isEmpty) break;
       }
       if (plan.create.isNotEmpty) {
@@ -376,7 +420,7 @@ class CalendarExport {
             startDate: p.start,
             endDate: p.end,
             isAllDay: p.allDay,
-            description: p.description,
+            description: p.descriptionFor(_device),
           )
           .timeout(const Duration(seconds: 20));
       return true;
@@ -411,10 +455,16 @@ class CalendarExport {
     return '$e';
   }
 
-  /// Entfernt alle von der App angelegten Termine im Zeitraum (beim Ausschalten).
+  /// Entfernt die von diesem Handy (oder einer alten Version) angelegten Termine im Zeitraum
+  /// (beim Ausschalten). Termine anderer Handys bleiben stehen.
   Future<int> removeAll(String calendarId, {DateTime? now}) async {
+    await load();
     final (from, to) = exportRange(now ?? DateTime.now());
-    final existing = await _existing(calendarId, from, to.add(const Duration(days: 2)));
+    final existing = (await _existing(
+      calendarId,
+      from,
+      to.add(const Duration(days: 2)),
+    )).where((e) => e.device.isEmpty || e.device == _device);
     final errors = <String>[];
     var n = 0;
     for (final e in existing) {

@@ -2,7 +2,7 @@
 
 # EchoWP Schichtplan
 
-**Aktuelle Version: 1.0.3**
+**Aktuelle Version: 1.0.4**
 
 Gemeinsamer Schichtkalender für die Familie (Android). Jede Person trägt ihre Schichten selbst ein, alle Handys sehen sofort denselben Kalender.
 
@@ -29,7 +29,7 @@ Gemeinsamer Schichtkalender für die Familie (Android). Jede Person trägt ihre 
 
 Duplikate sind ausgeschlossen: Jeder Eintrag hat die feste Kennung `uid_JJJJMMTT_platz`.
 
-Kalender-Export (`lib/calendar_export.dart`, Paket `device_calendar_plus`): Jeder Termin trägt in der Beschreibung `EchoWP-Schichtplan-ID: <Eintrag>`. Der Abgleich (zwei Wochen zurück, vier Monate voraus) legt fehlende Termine an, schreibt geänderte neu und löscht überzählige; Termine ohne Kennung bleiben unberührt. Die Einstellung liegt nur auf dem Handy.
+Kalender-Export (`lib/calendar_export.dart`, Paket `device_calendar_plus`): Jeder Termin trägt in der Beschreibung `EchoWP-Schichtplan-ID: <Eintrag> Gerät <Kennung>`. Jedes Handy ändert nur seine eigenen Termine; bei geteilten Kalendern legt nur das Handy mit der kleinsten Kennung eine Schicht an. Der Abgleich (zwei Wochen zurück, vier Monate voraus) legt fehlende Termine an, schreibt geänderte neu und löscht überzählige; Termine ohne Kennung bleiben unberührt. Die Einstellung liegt nur auf dem Handy.
 
 Widgets: Die App schreibt die Daten (`lib/home_widgets.dart`, Paket `home_widget`), der Android-Teil liegt in `tool/android/` und wird im Build von `tool/patch_android.py` eingefügt. Die Widgets aktualisieren sich, solange die App läuft oder geöffnet wird; „heute“ springt auch ohne App um Mitternacht weiter (14 Tage Vorrat).
 
@@ -47,6 +47,7 @@ Neueste Version: *Releases → `EchoWP-Schichtplan.apk`*. Play Protect: „Trotz
 
 ## Versionsverlauf
 
+- **1.0.4** – Kalender-Export mit mehreren Handys: Jedes Handy ändert nur seine eigenen Termine (Gerätekennung); schreiben mehrere in denselben Kalender, legt nur eines je Schicht an.
 - **1.0.3** – Kalender-Export: Abgleich nur noch mit vollständigen Daten vom Server (vorher konnte ein unvollständiger Zwischenspeicher Termine löschen); Kontrolle nach jedem Abgleich mit Anzahl je Person.
 - **1.0.2** – Kalender-Abgleich: erst anlegen, dann löschen; ein gescheiterter Termin hält den Rest nicht mehr auf; genaue Fehlermeldung auf der Karte.
 - **1.0.1** – „Lizenzen und Hinweise“ unter *Familie* (Datenschutz in Kurzform, Open-Source-Lizenzen); Code unter MIT-Lizenz.
